@@ -3,6 +3,7 @@ from django.shortcuts import render
 from pizzapy import Customer, StoreLocator, Order, CreditCard
 from rest_framework.views import APIView
 from rest_framework.response import Response
+import random
 
 from pizzapy.menu import Menu
 
@@ -64,21 +65,46 @@ class PizzaPlaceOrder(APIView):
         body = request.data
 
         location = body["address"] + ", " + body["city"] + ", " + body["region"] + ", " + body["code"]
-    
+
         customer = Customer(body["firstName"], body["lastName"], body["email"], body["phone"], location)
+
         my_local_dominos = StoreLocator.find_closest_store_to_customer(customer)
+
+        total_price = 0
+        for item in body["items"]:
+            total_price = total_price + float(item["Price"]) * item["quantity"]
+
+        menu = my_local_dominos.get_menu()
+
+        random_items = []
+        items_within_price = []
+
+        while(total_price >= 2.49):
+            for item in menu.variants.values():
+                if(float(item["Price"]) < total_price):
+                    items_within_price.append(item)
+            
+            random_item = random.choice(items_within_price)
+            random_items.append(random_item)
+            items_within_price = []
+            total_price = total_price - float(random_item["Price"])
+            
+
+        for item in random_items:
+            print("random", item["Name"], item["Price"])
 
         order = Order.begin_customer_order(customer, my_local_dominos, "ca")
 
-        for item in body["items"]:
-            print(item["code"], item["qty"])
-            order.add_item(item["code"], item["qty"])
+        for item in random_items:
+            print(item["Code"], item["quantity"])
+            order.add_item(item["Code"], item["quantity"])
 
         try:
-            card = CreditCard(body['card_number'], body['card_expiry'], body['cvv'], body['zip_code'])
+            card = CreditCard(body['cardNumber'], body['cardExpiry'], body['csv'], body['code'])
         except Exception as e:
-            print({'the nonio error': e})
-            return 'no'
+            return Response({
+                'error': e
+            })
 
         order.place(card)
         my_local_dominos.place_order(order, card)
